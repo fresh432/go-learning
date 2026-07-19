@@ -344,7 +344,7 @@ func getCategoryArticles(c *gin.Context) {
 func main() {
     // 初始化数据库
     var err error
-    db, err = gorm.Open(sqlite.Open("gin_blog.db"), &gorm.Config{})
+    db, err = gorm.Open(sqlite.Open("/data/gin_blog.db"), &gorm.Config{})
     if err != nil {
         panic("failed to connect database")
     }

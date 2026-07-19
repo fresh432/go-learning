@@ -1,8 +1,10 @@
 # 构建阶段
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
+RUN mkdir -p /data
 COPY go.mod go.sum ./
+ENV GOPROXY=https://goproxy.cn,direct
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main 10-gin-final.go
