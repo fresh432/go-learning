@@ -1,6 +1,7 @@
 package main
 
 import (
+    "fmt"
     "net/http"
     "time"
     "github.com/gin-gonic/gin"
@@ -344,13 +345,38 @@ func getCategoryArticles(c *gin.Context) {
 func main() {
     // 初始化数据库
     var err error
-    db, err = gorm.Open(sqlite.Open("/data/gin_blog.db"), &gorm.Config{})
+    db, err = gorm.Open(sqlite.Open("./data/gin_blog.db"), &gorm.Config{})
     if err != nil {
         panic("failed to connect database")
     }
     db.AutoMigrate(&User{}, &Article{}, &Comment{}, &Category{})
 
     r := gin.Default()
+
+    r.Use(func(c *gin.Context) {
+        c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+        c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        if c.Request.Method == "OPTIONS" {
+            c.AbortWithStatus(204)
+            return
+        }
+
+        c.Next()
+    })
+
+    r.Use(func(c *gin.Context) {
+        start := time.Now()
+        c.Next()
+
+        fmt.Printf("[%s] %s %s | %d | %v\n",
+            time.Now().Format("2006-01-02 15:04:05"),
+            c.Request.Method,
+            c.Request.URL.Path,
+            c.Writer.Status(),
+            time.Since(start),
+        )
+    })
 
     // 公开路由
     r.POST("/register", register)
