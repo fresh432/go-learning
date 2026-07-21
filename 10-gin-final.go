@@ -8,6 +8,11 @@ import (
     "github.com/golang-jwt/jwt/v5"
     "golang.org/x/crypto/bcrypt"
     "gorm.io/gorm"
+
+    swaggerFiles "github.com/swaggo/files"
+    ginSwagger "github.com/swaggo/gin-swagger"
+
+    _ "gin-demo/docs"  // 生成的docs包
 )
 import sqlite "github.com/ncruces/go-sqlite3/gormlite"
 
@@ -127,6 +132,15 @@ func checkPassword(password, hash string) bool {
 
 // ========== Handler ==========
 
+// @Summary 用户注册
+// @Description 创建一个新用户账号
+// @Tags 用户
+// @Accept json
+// @Produce json
+// @Param user body User true "用户信息"
+// @Success 201 {object} map[string]string "注册成功"
+// @Failure 400 {object} map[string]string "请求参数错误或用户名已存在"
+// @Router /register [post]
 func register(c *gin.Context) {
     var req struct {
         Username string `json:"username"`
@@ -152,6 +166,16 @@ func register(c *gin.Context) {
     c.JSON(http.StatusCreated, gin.H{"message": "注册成功"})
 }
 
+// @Summary 用户登录
+// @Description 使用用户名和密码登录，获取 JWT Token
+// @Tags 用户
+// @Accept json
+// @Produce json
+// @Param user body User true "登录凭证"
+// @Success 200 {object} map[string]string "登录成功，返回Token"
+// @Failure 400 {object} map[string]string "请求参数错误"
+// @Failure 401 {object} map[string]string "用户名或密码错误"
+// @Router /login [post]
 func login(c *gin.Context) {
     var req struct {
         Username string `json:"username"`
@@ -177,11 +201,30 @@ func login(c *gin.Context) {
     })
 }
 
+// @Summary 获取当前登录用户信息
+// @Description 需要 Bearer Token 认证
+// @Tags 用户
+// @Produce json
+// @Security ApiKeyAuth
+// @Success 200 {object} map[string]string "返回当前用户名"
+// @Failure 401 {object} map[string]string "未授权"
+// @Router /me [get]
 func getMe(c *gin.Context) {
     username, _ := c.Get("username")
     c.JSON(http.StatusOK, gin.H{"user": username})
 }
 
+// @Summary 创建文章
+// @Description 发布一篇新文章，需要认证
+// @Tags 文章
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param article body Article true "文章详情"
+// @Success 201 {object} Article "创建成功"
+// @Failure 400 {object} map[string]string "请求参数错误"
+// @Failure 401 {object} map[string]string "未授权"
+// @Router /articles [post]
 func createArticle(c *gin.Context) {
     var article Article
     if err := c.ShouldBindJSON(&article); err != nil {
@@ -197,7 +240,19 @@ func createArticle(c *gin.Context) {
     c.JSON(http.StatusCreated, article)
 }
 
-// 更新文章
+// @Summary 更新文章
+// @Description 根据ID更新文章信息，需要认证
+// @Tags 文章
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param id path int true "文章ID"
+// @Param article body Article true "更新后的文章信息"
+// @Success 200 {object} Article "更新成功"
+// @Failure 400 {object} map[string]string "请求参数错误"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 404 {object} map[string]string "文章或分类不存在"
+// @Router /articles/{id} [put]
 func updateArticle(c *gin.Context) {
     id := c.Param("id")
     var article Article
@@ -227,7 +282,16 @@ func updateArticle(c *gin.Context) {
     c.JSON(200, article)
 }
 
-// 删除文章 (级联删除评论)
+// @Summary 删除文章
+// @Description 根据ID删除文章，会级联删除评论，需要认证
+// @Tags 文章
+// @Produce json
+// @Security ApiKeyAuth
+// @Param id path int true "文章ID"
+// @Success 200 {object} map[string]string "删除成功"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 404 {object} map[string]string "文章不存在"
+// @Router /articles/{id} [delete]
 func deleteArticle(c *gin.Context) {
     id := c.Param("id")
     var article Article
@@ -243,7 +307,18 @@ func deleteArticle(c *gin.Context) {
     c.JSON(200, gin.H{"message": "删除成功"})
 }
 
-// 创建评论 (需要认证)
+// @Summary 创建评论
+// @Description 为指定文章添加评论，需要认证
+// @Tags 评论
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param comment body Comment true "评论内容"
+// @Success 201 {object} Comment "评论成功"
+// @Failure 400 {object} map[string]string "请求参数错误"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 404 {object} map[string]string "文章不存在"
+// @Router /comments [post]
 func createComment(c *gin.Context) {
     var comment Comment
     if err := c.ShouldBindJSON(&comment); err != nil {
@@ -266,7 +341,13 @@ func createComment(c *gin.Context) {
     c.JSON(http.StatusCreated, comment)
 }
 
-// 获取文章评论 (公开)
+// @Summary 获取文章评论列表
+// @Description 获取指定文章下的所有评论（公开接口）
+// @Tags 评论
+// @Produce json
+// @Param id path int true "文章ID"
+// @Success 200 {array} Comment "评论列表"
+// @Router /article/{id}/comments [get]
 func getArticleComments(c *gin.Context) {
     articleID := c.Param("id")
 
@@ -276,7 +357,17 @@ func getArticleComments(c *gin.Context) {
     c.JSON(http.StatusOK, comments)
 }
 
-// 创建分类
+// @Summary 创建分类
+// @Description 添加一个新的文章分类，需要认证
+// @Tags 分类
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param category body Category true "分类信息"
+// @Success 201 {object} Category "创建成功"
+// @Failure 400 {object} map[string]string "请求参数错误"
+// @Failure 401 {object} map[string]string "未授权"
+// @Router /categories [post]
 func createCategory(c *gin.Context) {
     var category Category
     if err := c.ShouldBindJSON(&category); err != nil {
@@ -287,7 +378,19 @@ func createCategory(c *gin.Context) {
     c.JSON(http.StatusCreated, category)
 }
 
-// 更新分类
+// @Summary 更新分类
+// @Description 修改分类名称，需要认证
+// @Tags 分类
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param id path int true "分类ID"
+// @Param category body Category true "新的分类信息"
+// @Success 200 {object} Category "更新成功"
+// @Failure 400 {object} map[string]string "请求参数错误"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 404 {object} map[string]string "分类不存在"
+// @Router /categories/{id} [put]
 func updateCategory(c *gin.Context) {
     id := c.Param("id")
     var category Category
@@ -306,7 +409,16 @@ func updateCategory(c *gin.Context) {
     c.JSON(200, category)
 }
 
-// 删除分类
+// @Summary 删除分类
+// @Description 删除分类，并将关联文章的分类ID置空，需要认证
+// @Tags 分类
+// @Produce json
+// @Security ApiKeyAuth
+// @Param id path int true "分类ID"
+// @Success 200 {object} map[string]string "删除成功"
+// @Failure 401 {object} map[string]string "未授权"
+// @Failure 404 {object} map[string]string "分类不存在"
+// @Router /categories/{id} [delete]
 func deleteCategory(c *gin.Context) {
     id := c.Param("id")
 	var category Category
@@ -322,14 +434,25 @@ func deleteCategory(c *gin.Context) {
 	c.JSON(200, gin.H{"message": "删除成功"})
 }
 
-// 获取分类列表
+// @Summary 获取分类列表
+// @Description 获取所有文章分类（公开接口）
+// @Tags 分类
+// @Produce json
+// @Success 200 {array} Category "分类列表"
+// @Router /categories [get]
 func listCategories(c *gin.Context) {
     var categories []Category
     db.Find(&categories)
     c.JSON(http.StatusOK, categories)
 }
 
-// 获取分类下的文章
+// @Summary 获取分类下的文章
+// @Description 获取指定分类下的所有文章（公开接口）
+// @Tags 分类
+// @Produce json
+// @Param id path int true "分类ID"
+// @Success 200 {array} Article "文章列表"
+// @Router /categories/{id}/articles [get]
 func getCategoryArticles(c *gin.Context) {
     categoryID := c.Param("id")
 
@@ -352,6 +475,9 @@ func main() {
     db.AutoMigrate(&User{}, &Article{}, &Comment{}, &Category{})
 
     r := gin.Default()
+
+    // Swagger文档路由
+    r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
     r.Use(func(c *gin.Context) {
         c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
