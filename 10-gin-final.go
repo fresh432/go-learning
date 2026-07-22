@@ -100,9 +100,8 @@ type Article struct {
     CategoryID  *uint       `json:"category_id"`
     Category    Category    `json:"category" gorm:"foreignKey:CategoryID"`
     Comment     []Comment   `json:"comment" gorm:"foreignKey:ArticleID"`
+    Likes       []Like      `json:"likes" gorm:"foreignKey:ArticleID"`
 }
-
-// ========== 评论模型 ==========
 
 type Comment struct {
     ID          uint        `json:"id" gorm:"primaryKey"`
@@ -112,10 +111,17 @@ type Comment struct {
     CreatedAt   time.Time   `json:"created_at"`
 }
 
-// ========== 分类模型 ==========
 type Category struct {
     ID      uint    `json:"id" gorm:"primaryKey"`
     Name    string  `json:"name" gorm:"unique;not null"`
+}
+
+// Like模型
+type Like struct {
+    ID          uint        `json:"id" gorm:"primaryKey"`
+    UserID      uint        `json:"user_id" gorm:"not null"`
+    ArticleID   uint        `json:"article_id" gorm:"not null"`
+    CreatedAt   time.Time   `json:"created_at"`
 }
 
 // ========== 密码处理 ==========
@@ -462,6 +468,95 @@ func getCategoryArticles(c *gin.Context) {
     c.JSON(http.StatusOK, articles)
 }
 
+// @Summary 点赞文章
+// @Description 给指定文章点赞，需要JWT认证
+// @Tags 点赞
+// @Param Authorization header string true "Bearer token"
+// @Param id path int true "文章ID"
+// @Success 200 {object} map[string]interface{}
+// @Router /articles/{id}/like [post]
+func likeArticle(c *gin.Context) {
+    articleID := c.Param("id")
+
+    // 获取当前用户
+    username, _ := c.Get("username")
+    var user User
+    if db.Where("username = ?", username).First(&user).Error != nil {
+        c.JSON(404, gin.H{"error": "用户不存在"})
+        return
+    }
+
+    // 检查文章存在
+    var article Article
+    if db.First(&article, articleID).Error != nil {
+        c.JSON(404, gin.H{"error": "文章不存在"})
+        return
+    }
+
+    // 检查是否已点赞
+    var existing Like
+    if db.Where("user_id = ? AND article_id = ?", user.ID, articleID).First(&existing).Error == nil {
+        c.JSON(400, gin.H{"error": "已点赞"})
+        return
+    }
+
+    like := Like{UserID: user.ID, ArticleID: article.ID}
+    db.Create(&like)
+
+    // 统计点赞数
+    count := db.Model(&article).Association("Likes").Count()
+
+    c.JSON(200, gin.H{"message": "点赞成功", "likes_count": count})
+}
+
+// @Summary 取消点赞
+// @Description 取消对指定文章的点赞
+// @Tags 点赞
+// @Param Authorization header string true "Bearer token"
+// @Param id path int true "文章ID"
+// @Success 200 {object} map[string]interface{}
+// @Router /articles/{id}/like [delete]
+func unlikeArticle(c *gin.Context) {
+    articleID := c.Param("id")
+
+    username, _ := c.Get("username")
+    var user User
+    db.Where("username = ?", username).First(&user)
+
+    var like Like
+    if db.Where("user_id = ? AND article_id = ?", user.ID, articleID).First(&like).Error != nil {
+        c.JSON(404, gin.H{"error": "未点赞"})
+        return
+    }
+
+    db.Delete(&like)
+
+    var article Article
+    db.First(&article, articleID)
+    count := db.Model(&article).Association("Likes").Count()
+
+    c.JSON(200, gin.H{"message": "取消点赞成功", "likes_count": count})
+}
+
+// @Summary 获取点赞数
+// @Description 获取指定文章的点赞数
+// @Tags 点赞
+// @Param id path int true "文章ID"
+// @Success 200 {object} map[string]interface{}
+// @Router /articles/{id}/likes [get]
+func getLikesCount(c *gin.Context) {
+    articleID := c.Param("id")
+
+    var article Article
+    if db.First(&article, articleID).Error != nil {
+        c.JSON(404, gin.H{"error": "文章不存在"})
+        return
+    }
+
+    count := db.Model(&article).Association("Likes").Count()
+
+    c.JSON(200, gin.H{"article_id": articleID, "likes_count": count})
+}
 
 // ========== 主函数 ==========
 
@@ -472,7 +567,7 @@ func main() {
     if err != nil {
         panic("failed to connect database")
     }
-    db.AutoMigrate(&User{}, &Article{}, &Comment{}, &Category{})
+    db.AutoMigrate(&User{}, &Article{}, &Comment{}, &Category{}, &Like{})
 
     r := gin.Default()
 
@@ -510,6 +605,7 @@ func main() {
     r.GET("/article/:id/comments", getArticleComments)
     r.GET("/categories", listCategories)
     r.GET("/categories/:id/articles", getCategoryArticles)
+    r.GET("/articles/:id/likes", getLikesCount)
 
     //需要认证的路由
     auth := r.Group("/")
@@ -523,6 +619,8 @@ func main() {
         auth.POST("/categories", createCategory)
         auth.PUT("/categories/:id", updateCategory)
         auth.DELETE("/categories/:id", deleteCategory)
+        auth.POST("/articles/:id/like", likeArticle)
+        auth.DELETE("/articles/:id/like", unlikeArticle)
     }
 
     r.Run(":8080")
