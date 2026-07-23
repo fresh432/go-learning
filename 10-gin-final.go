@@ -90,6 +90,8 @@ type User struct {
     ID          uint    `json:"id" gorm:"primaryKey"`
     Username    string  `json:"username" gorm:"unique;not null"`
     Password    string  `json:"-" gorm:"not null"`  // json 忽略
+    Avatar      string  `json:"avatar"`
+    Bio         string  `json:"bio"`
 }
 
 type Article struct {
@@ -218,6 +220,36 @@ func login(c *gin.Context) {
 func getMe(c *gin.Context) {
     username, _ := c.Get("username")
     c.JSON(http.StatusOK, gin.H{"user": username})
+}
+
+// @Summary 更新用户资料
+// @Description 更新当前用户的头像和简介
+// @Tags 用户
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Bearer token"
+// @Success 200 {object} User
+// @Router /users/me [put]
+func updateProfile(c *gin.Context) {
+    username, _ := c.Get("username")
+    var user User
+    if db.Where("username = ?", username).First(&user).Error != nil {
+        c.JSON(404, gin.H{"error": "用户不存在"})
+        return
+    }
+
+    var updateData struct {
+        Avatar  string  `json:"avatar"`
+        Bio     string  `json:"bio"`
+    }
+
+    if err := c.ShouldBindJSON(&updateData); err != nil {
+        c.JSON(400, gin.H{"error": err.Error()})
+        return
+    }
+
+    db.Model(&user).Updates(updateData)
+    c.JSON(200, user)
 }
 
 // @Summary 创建文章
@@ -612,6 +644,7 @@ func main() {
     auth.Use(JWTAuth())
     {
         auth.GET("/me", getMe)
+        auth.PUT("/users/me", updateProfile)
         auth.POST("/articles", createArticle)
         auth.PUT("/articles/:id", updateArticle)
         auth.DELETE("/articles/:id", deleteArticle)
